@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 PPT生成器
 支持 Google Gemini (Nano Banana Pro) 和 ComfyUI 两种图片生成引擎
@@ -10,6 +11,50 @@ import json
 import argparse
 from datetime import datetime
 from pathlib import Path
+
+# 设置标准输出编码为 UTF-8（Windows 兼容）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        # Python < 3.7
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+
+def load_env_file(env_path='.env'):
+    """加载 .env 文件到环境变量"""
+    env_file = Path(env_path)
+    if not env_file.exists():
+        # 尝试在项目根目录查找
+        project_root = Path(__file__).parent.parent.parent.parent
+        env_file = project_root / '.env'
+        if not env_file.exists():
+            return
+    
+    try:
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # 跳过空行和注释
+                if not line or line.startswith('#'):
+                    continue
+                # 解析 KEY=VALUE 格式
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    # 如果环境变量不存在，则设置它（.env 文件的优先级低于系统环境变量）
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+    except Exception as e:
+        print(f"警告: 加载 .env 文件失败: {e}")
+
+
+# 在导入其他模块前加载 .env 文件
+load_env_file()
 
 
 def load_style_template(style_path):
