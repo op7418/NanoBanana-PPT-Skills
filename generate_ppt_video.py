@@ -257,21 +257,32 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  # 基本用法（从已有PPT图片生成视频）
-  python generate_ppt_video.py --slides-dir outputs/xxx/images --output-dir outputs/xxx_video
+  # 基本用法（使用Claude Code生成的提示词文件）
+  python generate_ppt_video.py \\
+    --slides-dir outputs/xxx/images \\
+    --output-dir outputs/xxx_video \\
+    --prompts-file outputs/xxx/transition_prompts.json
 
   # 完整参数
   python generate_ppt_video.py \\
     --slides-dir outputs/xxx/images \\
     --output-dir outputs/xxx_video \\
+    --prompts-file outputs/xxx/transition_prompts.json \\
     --video-mode both \\
     --video-duration 5 \\
     --slide-duration 5 \\
     --video-quality pro \\
     --max-concurrent 3
 
+工作流程:
+  1. 生成PPT图片: python generate_ppt.py ...
+  2. 让Claude Code分析图片生成提示词:
+     在Claude Code中运行: "请分析outputs/xxx/images中的图片，生成转场提示词"
+  3. 生成转场视频: python generate_ppt_video.py --prompts-file ...
+
 注意事项:
-  - 确保.env文件中配置了Kling_Access_Key和Kling_Secret_Key
+  - 确保.env文件中配置了KLING_ACCESS_KEY和KLING_SECRET_KEY
+  - 必须先用Claude Code分析图片生成transition_prompts.json文件
   - 首尾帧视频生成必须使用pro模式（高质量）
   - 可灵API并发限制为3，生成时间较长请耐心等待
         """
@@ -332,7 +343,8 @@ def main():
 
     parser.add_argument(
         '--prompts-file',
-        help='提示词文件路径（JSON格式，由Claude Code生成）'
+        required=True,
+        help='转场提示词文件路径（JSON格式，必须由Claude Code分析图片后生成）'
     )
 
     args = parser.parse_args()
@@ -340,6 +352,16 @@ def main():
     # 验证输入目录
     if not os.path.exists(args.slides_dir):
         print(f"❌ 错误: PPT图片目录不存在: {args.slides_dir}")
+        sys.exit(1)
+
+    # 验证提示词文件
+    if not os.path.exists(args.prompts_file):
+        print(f"❌ 错误: 提示词文件不存在: {args.prompts_file}")
+        print(f"\n💡 如何生成提示词文件：")
+        print(f"   1. 在 Claude Code 中运行以下提示：")
+        print(f"      '请分析 {args.slides_dir} 中的图片，生成转场视频提示词，")
+        print(f"       保存为 transition_prompts.json'")
+        print(f"   2. 然后使用 --prompts-file 参数指定生成的文件路径")
         sys.exit(1)
 
     # 执行生成

@@ -10,7 +10,21 @@
 
 **创作者**: [歸藏](https://github.com/op7418)
 
-[功能特性](#-功能特性) • [一键安装](#-一键安装) • [作为 Skill 使用](#-作为-claude-code-skill-使用) • [使用指南](#-使用指南) • [视频功能](#-视频功能) • [架构文档](ARCHITECTURE.md) • [常见问题](#-常见问题)
+[效果演示](#-效果演示) • [功能特性](#-功能特性) • [一键安装](#-一键安装) • [作为 Skill 使用](#-作为-claude-code-skill-使用) • [使用指南](#-使用指南) • [视频功能](#-视频功能) • [架构文档](ARCHITECTURE.md) • [常见问题](#-常见问题)
+
+</div>
+
+---
+
+## 🎬 效果演示
+
+<div align="center">
+
+<video src="https://github.com/op7418/NanoBanana-PPT-Skills/raw/main/PPT-Skills-Demo.mp4" controls width="800">
+  您的浏览器不支持视频播放，请<a href="https://github.com/op7418/NanoBanana-PPT-Skills/raw/main/PPT-Skills-Demo.mp4">点击下载查看</a>
+</video>
+
+*AI 自动生成 PPT 并添加流畅转场动画 - 从文档分析到视频合成一键完成*
 
 </div>
 
@@ -417,7 +431,7 @@ open outputs/TIMESTAMP/index.html
 
 ### 高级使用：生成带转场视频的 PPT
 
-#### 1. 生成 PPT 图片（同上）
+#### 1. 生成 PPT 图片
 
 ```bash
 python3 generate_ppt.py \
@@ -426,20 +440,38 @@ python3 generate_ppt.py \
   --resolution 2K
 ```
 
-#### 2. 生成转场视频
+#### 2. 使用 Claude Code 生成转场提示词（必需）
+
+在 Claude Code 中执行：
+
+```
+我刚生成了 5 页 PPT 图片在 outputs/TIMESTAMP/images 目录下。
+请帮我分析这些图片，为每个页面转场生成视频提示词，
+保存为 outputs/TIMESTAMP/transition_prompts.json
+```
+
+Claude Code 会：
+1. 读取所有 PPT 图片
+2. 分析每两页之间的视觉差异
+3. 生成精准的转场描述
+4. 保存为 JSON 文件
+
+#### 3. 生成转场视频
 
 ```bash
 python3 generate_ppt_video.py \
   --slides-dir outputs/TIMESTAMP/images \
-  --output-dir outputs/TIMESTAMP_video
+  --output-dir outputs/TIMESTAMP_video \
+  --prompts-file outputs/TIMESTAMP/transition_prompts.json
 ```
 
 这会生成：
 - 首页循环预览视频
 - 每个页面间的转场视频
 - 交互式视频播放器 HTML
+- 完整视频 (full_ppt_video.mp4)
 
-#### 3. 播放交互式视频 PPT
+#### 4. 播放交互式视频 PPT
 
 ```bash
 open outputs/TIMESTAMP_video/video_index.html

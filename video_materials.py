@@ -13,12 +13,6 @@ from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from kling_api import KlingVideoGenerator
-try:
-    from transition_prompt_generator import TransitionPromptGenerator
-    CLAUDE_API_AVAILABLE = True
-except Exception:
-    CLAUDE_API_AVAILABLE = False
-from simple_transition_prompt_generator import SimpleTransitionPromptGenerator
 from prompt_file_reader import PromptFileReader
 
 
@@ -29,34 +23,41 @@ class VideoMaterialsGenerator:
         self,
         kling_client: Optional[KlingVideoGenerator] = None,
         prompt_generator = None,
-        max_concurrent: int = 3,  # 可灵API并发限制
-        use_simple_prompts: bool = True,  # 默认使用简化版
-        prompts_file: Optional[str] = None  # 提示词文件路径
+        max_concurrent: int = 3,
+        prompts_file: Optional[str] = None
     ):
         """
         初始化生成器
 
         Args:
             kling_client: 可灵API客户端（如果不提供，自动创建）
-            prompt_generator: 转场提示词生成器（如果不提供，自动创建）
+            prompt_generator: 转场提示词生成器（如果不提供，必须提供prompts_file）
             max_concurrent: 最大并发数，默认3
-            use_simple_prompts: 是否使用简化版提示词生成器（不依赖Claude API）
-            prompts_file: 提示词文件路径（如果提供，从文件读取，优先级最高）
+            prompts_file: 提示词文件路径（必需，由Claude Code生成）
         """
         self.kling_client = kling_client or KlingVideoGenerator()
 
-        # 选择提示词生成器（优先级：文件 > 自定义 > 简化版 > 完整版）
+        # 选择提示词生成器（优先级：文件 > 自定义）
         if prompts_file:
             self.prompt_generator = PromptFileReader(prompts_file)
             print(f"✅ 使用提示词文件: {prompts_file}")
         elif prompt_generator:
             self.prompt_generator = prompt_generator
-        elif use_simple_prompts or not CLAUDE_API_AVAILABLE:
-            self.prompt_generator = SimpleTransitionPromptGenerator()
-            print(f"✅ 使用简化版提示词生成器（不依赖Claude API）")
+            print(f"✅ 使用自定义提示词生成器")
         else:
-            self.prompt_generator = TransitionPromptGenerator()
-            print(f"✅ 使用完整版提示词生成器（Claude API）")
+            raise ValueError(
+                "❌ 缺少转场提示词！\n\n"
+                "视频生成需要转场提示词文件，请按以下步骤操作：\n"
+                "1. 在 Claude Code 中运行以下提示：\n"
+                "   '请分析 outputs/xxx/images 中的图片，生成转场视频提示词，\n"
+                "    保存为 outputs/xxx/transition_prompts.json'\n"
+                "2. 然后使用 --prompts-file 参数指定生成的文件路径\n\n"
+                "示例:\n"
+                "  python generate_ppt_video.py \\\n"
+                "    --slides-dir outputs/xxx/images \\\n"
+                "    --output-dir outputs/xxx_video \\\n"
+                "    --prompts-file outputs/xxx/transition_prompts.json"
+            )
 
         self.max_concurrent = max_concurrent
 

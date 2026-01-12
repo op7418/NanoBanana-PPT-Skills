@@ -30,15 +30,15 @@ class KlingVideoGenerator:
             secret_key: 密钥（如果不提供，从环境变量读取）
         """
         # 从环境变量读取密钥
-        self.access_key = access_key or os.environ.get("Kling_Access_Key")
-        self.secret_key = secret_key or os.environ.get("Kling_Secret_Key")
+        self.access_key = access_key or os.environ.get("KLING_ACCESS_KEY")
+        self.secret_key = secret_key or os.environ.get("KLING_SECRET_KEY")
 
         if not self.access_key or not self.secret_key:
             raise ValueError(
                 "❌ 可灵API密钥未配置！\n"
                 "请在.env文件中配置：\n"
-                "  Kling_Access_Key=your-access-key\n"
-                "  Kling_Secret_Key=your-secret-key"
+                "  KLING_ACCESS_KEY=your-access-key\n"
+                "  KLING_SECRET_KEY=your-secret-key"
             )
 
         print(f"✅ 可灵API客户端初始化成功")
