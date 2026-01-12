@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPT播放器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        .container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .slide {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .slide.active {
+            display: block;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 12px 24px;
+            border-radius: 25px;
+            color: white;
+            font-size: 14px;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+        }
+
+        .controls.hidden {
+            opacity: 0;
+        }
+
+        .indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 12px 24px;
+            border-radius: 20px;
+            color: white;
+            font-size: 14px;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+        }
+
+        .indicator.hidden {
+            opacity: 0;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            z-index: 200;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="slideContainer">
+        <!-- 图片将通过JS动态插入 -->
+    </div>
+
+    <div class="indicator" id="indicator">
+        <span id="current">1</span> / <span id="total">0</span>
+    </div>
+
+    <div class="controls" id="controls">
+        ← → 切换页面 | ↑ 首页 | ↓ 末页 | ESC 全屏 | 空格 暂停/继续 | H 隐藏控件
+    </div>
+
+    <div class="loading" id="loading">加载中...</div>
+
+    <script>
+        // 图片列表将通过替换占位符注入
+        const slides = [/* IMAGE_LIST_PLACEHOLDER */];
+        let currentSlide = 0;
+        let autoPlayInterval = null;
+        let isAutoPlaying = false;
+        let controlsVisible = true;
+
+        function init() {
+            const container = document.getElementById('slideContainer');
+            const loading = document.getElementById('loading');
+
+            if (slides.length === 0) {
+                loading.textContent = '未找到幻灯片图片';
+                return;
+            }
+
+            slides.forEach((src, index) => {
+                const img = document.createElement('img');
+                img.src = src;
+                img.className = 'slide' + (index === 0 ? ' active' : '');
+                img.alt = `幻灯片 ${index + 1}`;
+                img.onerror = function() {
+                    console.error(`Failed to load image: ${src}`);
+                };
+                container.appendChild(img);
+            });
+
+            document.getElementById('total').textContent = slides.length;
+            updateIndicator();
+
+            // 隐藏加载提示
+            loading.style.display = 'none';
+
+            // 3秒后自动隐藏控件
+            setTimeout(() => {
+                hideControls();
+            }, 3000);
+        }
+
+        function showSlide(index) {
+            const allSlides = document.querySelectorAll('.slide');
+
+            if (index < 0 || index >= slides.length) {
+                return;
+            }
+
+            allSlides.forEach(s => s.classList.remove('active'));
+            allSlides[index].classList.add('active');
+            currentSlide = index;
+            updateIndicator();
+
+            // 显示控件
+            showControls();
+
+            // 3秒后再次隐藏
+            setTimeout(() => {
+                hideControls();
+            }, 3000);
+        }
+
+        function updateIndicator() {
+            document.getElementById('current').textContent = currentSlide + 1;
+        }
+
+        function nextSlide() {
+            if (currentSlide < slides.length - 1) {
+                showSlide(currentSlide + 1);
+            } else if (isAutoPlaying) {
+                // 自动播放模式下循环
+                showSlide(0);
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 0) {
+                showSlide(currentSlide - 1);
+            } else if (isAutoPlaying) {
+                // 自动播放模式下循环
+                showSlide(slides.length - 1);
+            }
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        function toggleAutoPlay() {
+            if (isAutoPlaying) {
+                stopAutoPlay();
+            } else {
+                startAutoPlay();
+            }
+        }
+
+        function startAutoPlay() {
+            if (autoPlayInterval) {
+                clearInterval(autoPlayInterval);
+            }
+            autoPlayInterval = setInterval(() => {
+                nextSlide();
+            }, 3000); // 每3秒切换一次
+            isAutoPlaying = true;
+            updateControlsText();
+        }
+
+        function stopAutoPlay() {
+            if (autoPlayInterval) {
+                clearInterval(autoPlayInterval);
+                autoPlayInterval = null;
+            }
+            isAutoPlaying = false;
+            updateControlsText();
+        }
+
+        function updateControlsText() {
+            const controls = document.getElementById('controls');
+            const playText = isAutoPlaying ? '暂停' : '继续';
+            controls.textContent = `← → 切换页面 | ↑ 首页 | ↓ 末页 | ESC 全屏 | 空格 ${playText} | H 隐藏控件`;
+        }
+
+        function hideControls() {
+            if (controlsVisible) {
+                document.getElementById('indicator').classList.add('hidden');
+                document.getElementById('controls').classList.add('hidden');
+                controlsVisible = false;
+            }
+        }
+
+        function showControls() {
+            if (!controlsVisible) {
+                document.getElementById('indicator').classList.remove('hidden');
+                document.getElementById('controls').classList.remove('hidden');
+                controlsVisible = true;
+            }
+        }
+
+        function toggleControls() {
+            if (controlsVisible) {
+                hideControls();
+            } else {
+                showControls();
+            }
+        }
+
+        // 键盘事件监听
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft':
+                    prevSlide();
+                    stopAutoPlay(); // 手动操作时停止自动播放
+                    break;
+                case 'ArrowRight':
+                    nextSlide();
+                    stopAutoPlay();
+                    break;
+                case 'ArrowUp':
+                case 'Home':
+                    showSlide(0);
+                    stopAutoPlay();
+                    break;
+                case 'ArrowDown':
+                case 'End':
+                    showSlide(slides.length - 1);
+                    stopAutoPlay();
+                    break;
+                case 'Escape':
+                    toggleFullscreen();
+                    break;
+                case ' ': // 空格键
+                    e.preventDefault(); // 防止页面滚动
+                    toggleAutoPlay();
+                    break;
+                case 'h':
+                case 'H':
+                    toggleControls();
+                    break;
+            }
+        });
+
+        // 鼠标移动时显示控件
+        let mouseTimer = null;
+        document.addEventListener('mousemove', () => {
+            showControls();
+
+            // 清除之前的定时器
+            if (mouseTimer) {
+                clearTimeout(mouseTimer);
+            }
+
+            // 3秒后隐藏控件
+            mouseTimer = setTimeout(() => {
+                hideControls();
+            }, 3000);
+        });
+
+        // 触摸滑动支持（移动设备）
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            const swipeThreshold = 50; // 最小滑动距离
+
+            if (touchEndX < touchStartX - swipeThreshold) {
+                // 向左滑动，显示下一页
+                nextSlide();
+                stopAutoPlay();
+            }
+
+            if (touchEndX > touchStartX + swipeThreshold) {
+                // 向右滑动，显示上一页
+                prevSlide();
+                stopAutoPlay();
+            }
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>

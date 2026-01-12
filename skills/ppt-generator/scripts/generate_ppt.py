@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 PPT生成器
 支持 Google Gemini (Nano Banana Pro) 和 ComfyUI 两种图片生成引擎
@@ -10,57 +11,50 @@ import json
 import argparse
 from datetime import datetime
 from pathlib import Path
-from dotenv import load_dotenv
+
+# 设置标准输出编码为 UTF-8（Windows 兼容）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        # Python < 3.7
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 
-def find_and_load_env():
-    """
-    智能查找并加载 .env 文件
-    优先级：
-    1. 当前脚本所在目录
-    2. 向上查找到项目根目录（包含 .git 或 .env 的目录）
-    3. 用户主目录下的 .claude/skills/ppt-generator/
-    """
-    current_dir = Path(__file__).parent
-
-    # 1. 尝试当前目录
-    if (current_dir / ".env").exists():
-        load_dotenv(current_dir / ".env", override=True)
-        print(f"✅ 已加载环境变量: {current_dir / '.env'}")
-        return True
-
-    # 2. 向上查找到项目根目录
-    for parent in current_dir.parents:
-        env_path = parent / ".env"
-        if env_path.exists():
-            load_dotenv(env_path, override=True)
-            print(f"✅ 已加载环境变量: {env_path}")
-            return True
-        # 如果找到 .git 目录，说明到达项目根目录
-        if (parent / ".git").exists():
-            break
-
-    # 3. 尝试 Claude Code Skill 标准位置
-    claude_skill_env = Path.home() / ".claude" / "skills" / "ppt-generator" / ".env"
-    if claude_skill_env.exists():
-        load_dotenv(claude_skill_env, override=True)
-        print(f"✅ 已加载环境变量: {claude_skill_env}")
-        return True
-
-    # 如果都没找到，尝试默认加载（可能从系统环境变量获取）
-    load_dotenv(override=True)
-    print("⚠️  未找到 .env 文件，尝试使用系统环境变量")
-    return False
+def load_env_file(env_path='.env'):
+    """加载 .env 文件到环境变量"""
+    env_file = Path(env_path)
+    if not env_file.exists():
+        # 尝试在项目根目录查找
+        project_root = Path(__file__).parent.parent.parent.parent
+        env_file = project_root / '.env'
+        if not env_file.exists():
+            return
+    
+    try:
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # 跳过空行和注释
+                if not line or line.startswith('#'):
+                    continue
+                # 解析 KEY=VALUE 格式
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    # 如果环境变量不存在，则设置它（.env 文件的优先级低于系统环境变量）
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+    except Exception as e:
+        print(f"警告: 加载 .env 文件失败: {e}")
 
 
-# 智能加载环境变量
-find_and_load_env()
-
-# 添加 skills 脚本目录到路径，以便导入 comfyui_client
-SCRIPT_DIR = Path(__file__).parent
-SKILLS_SCRIPTS_DIR = SCRIPT_DIR / "skills" / "ppt-generator" / "scripts"
-if SKILLS_SCRIPTS_DIR.exists():
-    sys.path.insert(0, str(SKILLS_SCRIPTS_DIR))
+# 在导入其他模块前加载 .env 文件
+load_env_file()
 
 
 def load_style_template(style_path):
@@ -205,12 +199,13 @@ def generate_slide_comfyui(prompt, slide_number, output_dir, comfyui_config):
 
 def get_default_workflow_path():
     """获取默认工作流路径"""
+    # 尝试多个可能的路径
     script_dir = Path(__file__).parent
     possible_paths = [
-        # 项目根目录的工作流
-        script_dir / "comfyui-workflows" / "image_z_image_turbo.json",
         # skills 目录下的工作流
-        script_dir / "skills" / "ppt-generator" / "assets" / "workflows" / "z_image_turbo_16x9.json",
+        script_dir.parent / "assets" / "workflows" / "z_image_turbo_16x9.json",
+        # 项目根目录的工作流
+        script_dir.parent.parent.parent / "comfyui-workflows" / "image_z_image_turbo.json",
         # 相对于当前工作目录
         Path("comfyui-workflows") / "image_z_image_turbo.json",
         Path("skills/ppt-generator/assets/workflows/z_image_turbo_16x9.json"),

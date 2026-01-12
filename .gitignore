@@ -32,3 +32,4 @@ outputs/
 # 测试文件
 test_*.json
 *_test.py
+work_dir/
