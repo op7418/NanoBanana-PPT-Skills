@@ -186,6 +186,17 @@ def get_gemini_client():
         print("Please set: export GEMINI_API_KEY='your-api-key'")
         sys.exit(1)
 
+    # Antigravity Tools 反向代理支持
+    use_antigravity = os.environ.get("ANTIGRAVITY_ENABLED", "").lower() == "true"
+    if use_antigravity:
+        api_endpoint = os.environ.get("ANTIGRAVITY_API_ENDPOINT")
+        if api_endpoint:
+            from google.genai import types
+            return genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(api_version="v1beta", base_url=api_endpoint)
+            )
+
     return genai.Client(api_key=api_key)
 
 
