@@ -22,6 +22,20 @@ from dotenv import load_dotenv
 # =============================================================================
 
 DEFAULT_RESOLUTION = "2K"
+
+# --- Atlas Cloud（可选 provider）---------------------------------------------
+# Gemini 官方 API 在部分地区不能直连。Atlas 走异步接口：提交任务 -> 轮询 ->
+# 下载产物。默认模型选 seedream-v4，因为实测它精确遵守请求尺寸，能保住本项目
+# 2K / 4K 的出图承诺（nano-banana 系列忽略 size，只认 aspect_ratio，出图约
+# 1376x768，做 PPT 不够用）。
+ATLAS_API_BASE = "https://api.atlascloud.ai/api/v1/model"
+ATLAS_DEFAULT_MODEL = "bytedance/seedream-v4"
+ATLAS_POLL_INTERVAL = 5
+ATLAS_POLL_TIMEOUT = 600
+# api.atlascloud.ai 会用 403(error code 1010) 拒掉部分客户端的默认 User-Agent
+ATLAS_USER_AGENT = "nanobanana-ppt-skills/1"
+# 本项目固定 16:9，这里直接给两档对应的像素尺寸（实测两档都精确返回）
+ATLAS_SIZES = {"2K": "2048*1152", "4K": "3840*2160"}
 DEFAULT_TEMPLATE_PATH = "templates/viewer.html"
 OUTPUT_BASE_DIR = "outputs"
 
@@ -189,24 +203,135 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
 
 
-def generate_slide(
+def generate_slide_atlas(
     prompt: str,
     slide_number: int,
     output_dir: str,
     resolution: str = DEFAULT_RESOLUTION,
 ) -> Optional[str]:
     """
-    Generate a single PPT slide image using Gemini API.
+    Generate a single PPT slide image using Atlas Cloud.
+
+    Atlas is an async API: submit a job, poll the prediction, download the
+    result. Returns the same path/None contract as the Gemini path.
+    """
+    import time
+    import urllib.error
+    import urllib.request
+
+    api_key = os.environ.get("ATLASCLOUD_API_KEY")
+    if not api_key:
+        print("Error: ATLASCLOUD_API_KEY environment variable not set")
+        print("Please set: export ATLASCLOUD_API_KEY='your-api-key'")
+        sys.exit(1)
+
+    model = os.environ.get("ATLASCLOUD_IMAGE_MODEL") or ATLAS_DEFAULT_MODEL
+    size = ATLAS_SIZES.get(resolution, ATLAS_SIZES[DEFAULT_RESOLUTION])
+
+    def call(url: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        headers = {"Authorization": f"Bearer {api_key}", "User-Agent": ATLAS_USER_AGENT}
+        data = None
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+            data = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            url, data=data, headers=headers, method="POST" if payload is not None else "GET"
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    print(f"Generating slide {slide_number}...")
+
+    try:
+        submitted = call(
+            f"{ATLAS_API_BASE}/generateImage",
+            {"model": model, "prompt": prompt, "size": size},
+        )
+        prediction_id = (submitted.get("data") or {}).get("id")
+        if not prediction_id:
+            print(f"  Slide {slide_number} failed: no prediction id in response")
+            return None
+
+        deadline = time.monotonic() + ATLAS_POLL_TIMEOUT
+        while True:
+            time.sleep(ATLAS_POLL_INTERVAL)
+            result = call(f"{ATLAS_API_BASE}/prediction/{prediction_id}")
+            data = result.get("data") or {}
+            status = data.get("status")
+            if status == "completed":
+                outputs = data.get("outputs") or []
+                if not outputs:
+                    print(f"  Slide {slide_number} failed: No image data received")
+                    return None
+                break
+            if status == "failed":
+                print(f"  Slide {slide_number} failed: {data.get('error') or status}")
+                return None
+            if time.monotonic() > deadline:
+                print(f"  Slide {slide_number} failed: timed out after {ATLAS_POLL_TIMEOUT}s")
+                return None
+
+        download = urllib.request.Request(
+            outputs[0], headers={"User-Agent": ATLAS_USER_AGENT}
+        )
+        with urllib.request.urlopen(download, timeout=300) as response:
+            content = response.read()
+
+        image_path = os.path.join(
+            output_dir, "images", f"slide-{slide_number:02d}.png"
+        )
+        # The viewer HTML references images/slide-XX.png, and Atlas returns
+        # whatever container the model produced (seedream-v4 returns JPEG), so
+        # normalise to PNG instead of writing JPEG bytes under a .png name.
+        if content[:8] == b"\x89PNG\r\n\x1a\n":
+            with open(image_path, "wb") as handle:
+                handle.write(content)
+        else:
+            try:
+                from PIL import Image
+            except ImportError:
+                print("Error: pillow library not installed (needed to convert Atlas output to PNG)")
+                print("Please run: pip install pillow")
+                sys.exit(1)
+            import io
+
+            Image.open(io.BytesIO(content)).convert("RGB").save(image_path, format="PNG")
+
+        print(f"  Slide {slide_number} saved: {image_path}")
+        return image_path
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(f"  Slide {slide_number} failed: HTTP {e.code} {body[:200]}")
+        return None
+    except Exception as e:
+        print(f"  Slide {slide_number} failed: {e}")
+        return None
+
+
+def generate_slide(
+    prompt: str,
+    slide_number: int,
+    output_dir: str,
+    resolution: str = DEFAULT_RESOLUTION,
+    provider: str = "gemini",
+) -> Optional[str]:
+    """
+    Generate a single PPT slide image.
 
     Args:
         prompt: The generation prompt.
         slide_number: Slide number for filename.
         output_dir: Output directory path.
         resolution: Image resolution (2K or 4K).
+        provider: "gemini" (default) or "atlas".
 
     Returns:
         Path to saved image, or None if generation failed.
     """
+    if provider == "atlas":
+        return generate_slide_atlas(prompt, slide_number, output_dir, resolution)
+
     from google.genai import types
 
     print(f"Generating slide {slide_number}...")
@@ -315,7 +440,9 @@ Example usage:
   python generate_ppt.py --plan slides_plan.json --style styles/gradient-glass.md --resolution 2K
 
 Environment variables:
-  GEMINI_API_KEY: Google AI API key (required)
+  GEMINI_API_KEY: Google AI API key (required for the default provider)
+  ATLASCLOUD_API_KEY: Atlas Cloud API key (required for --provider atlas)
+  ATLASCLOUD_IMAGE_MODEL: override the Atlas model (default bytedance/seedream-v4)
 """,
     )
 
@@ -334,6 +461,12 @@ Environment variables:
         choices=["2K", "4K"],
         default=DEFAULT_RESOLUTION,
         help=f"Image resolution (default: {DEFAULT_RESOLUTION})",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=["gemini", "atlas"],
+        default="gemini",
+        help="Image provider: gemini (default, Google AI) or atlas (Atlas Cloud)",
     )
     parser.add_argument(
         "--output",
@@ -415,7 +548,9 @@ def main() -> None:
         )
 
         # Generate image
-        image_path = generate_slide(prompt, slide_number, output_dir, args.resolution)
+        image_path = generate_slide(
+            prompt, slide_number, output_dir, args.resolution, args.provider
+        )
 
         # Record prompt data
         prompts_data["slides"].append({

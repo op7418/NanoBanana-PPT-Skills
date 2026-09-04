@@ -34,6 +34,27 @@
 - `KLING_ACCESS_KEY`: 可灵 AI Access Key
 - `KLING_SECRET_KEY`: 可灵 AI Secret Key
 
+**可选（Gemini 官方 API 不能直连时的第二条出图路径）：**
+- `ATLASCLOUD_API_KEY`: [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=nanobanana-ppt-skills) API 密钥，配合 `--provider atlas` 使用
+- `ATLASCLOUD_IMAGE_MODEL`: 覆盖模型（默认 `bytedance/seedream-v4`）
+
+```bash
+# 走 Atlas 出图，其余参数不变
+python3 generate_ppt.py --plan slides_plan.json --style styles/gradient-glass.md \
+  --resolution 2K --provider atlas
+```
+
+实测要点：
+
+- **2K / 4K 都保住了**：默认模型 `bytedance/seedream-v4` 精确遵守请求尺寸，脚本把
+  16:9 的两档换算成 `2048*1152` / `3840*2160`，实测出图正好是这两个尺寸。
+- **不要换成 nano-banana 系列**：实测那一系列忽略尺寸参数、只认 `aspect_ratio`，
+  出图约 1376×768，做 PPT 不够用。
+- 该模型返回 JPEG，而 viewer HTML 引用的是 `images/slide-XX.png`，所以脚本会把
+  产物转成 PNG 落盘，不会写出名不副实的文件。
+- **这条路不需要 `google-genai`**：`--provider atlas` 分支在导入 `google.genai`
+  之前就返回了，只用标准库 + pillow。
+
 ### Python 依赖
 
 ```bash
