@@ -1,3 +1,8 @@
+---
+name: nanobanana-ppt-skills
+description: "基于 AI 自动生成高质量 PPT 图片和视频：把大纲或文章逐页渲染成 16:9 图片幻灯片，支持智能转场动画和交互式播放，可导出完整 PPT 视频。当用户要把大纲变成图片版 PPT、生成 PPT 转场视频，或提到 Nano Banana / 可灵 AI 做幻灯片时使用。"
+---
+
 # PPT Generator Pro - Claude Code Skill
 
 ## 📋 元数据
